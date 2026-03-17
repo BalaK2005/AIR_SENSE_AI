@@ -1,295 +1,284 @@
-/**
- * AQI Forecast Component
- * Displays 72-hour air quality forecast with interactive chart
- */
-
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
-import axios from 'axios';
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import { aqiAPI, helpers } from '../services/api';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+// 17 NCR monitoring stations
+const STATIONS = [
+  { id:'s1',  name:'Major Dhyan Chand Stadium', region:'Delhi',     lat:28.6139, lon:77.2373, primary:true  },
+  { id:'s2',  name:'ITO',                        region:'Delhi',     lat:28.6289, lon:77.2401 },
+  { id:'s3',  name:'Anand Vihar',                region:'Delhi',     lat:28.6469, lon:77.3160 },
+  { id:'s4',  name:'RK Puram',                   region:'Delhi',     lat:28.5635, lon:77.1870 },
+  { id:'s5',  name:'Punjabi Bagh',               region:'Delhi',     lat:28.6720, lon:77.1310 },
+  { id:'s6',  name:'Dwarka Sector 8',            region:'Delhi',     lat:28.5921, lon:77.0460 },
+  { id:'s7',  name:'Rohini',                     region:'Delhi',     lat:28.7495, lon:77.0674 },
+  { id:'s8',  name:'Okhla Phase 2',              region:'Delhi',     lat:28.5314, lon:77.2735 },
+  { id:'s9',  name:'Sector 62, Noida',           region:'Noida',     lat:28.6209, lon:77.3687 },
+  { id:'s10', name:'Sector 1, Noida',            region:'Noida',     lat:28.5355, lon:77.3910 },
+  { id:'s11', name:'Sector 125, Noida',          region:'Noida',     lat:28.5447, lon:77.3182 },
+  { id:'s12', name:'Gurgaon City',               region:'Gurgaon',   lat:28.4595, lon:77.0266 },
+  { id:'s13', name:'Sector 51, Gurgaon',         region:'Gurgaon',   lat:28.4282, lon:77.0689 },
+  { id:'s14', name:'Ghaziabad Vasundhara',       region:'Ghaziabad', lat:28.6692, lon:77.3754 },
+  { id:'s15', name:'Loni, Ghaziabad',            region:'Ghaziabad', lat:28.7517, lon:77.2884 },
+  { id:'s16', name:'Faridabad Sector 11',        region:'Faridabad', lat:28.4089, lon:77.3178 },
+  { id:'s17', name:'NIT Faridabad',              region:'Faridabad', lat:28.3830, lon:77.3120 },
+];
 
-const AQI_COLORS = {
-  'Good': '#00E400',
-  'Satisfactory': '#FFFF00',
-  'Moderate': '#FF7E00',
-  'Poor': '#FF0000',
-  'Very Poor': '#8F3F97',
-  'Severe': '#7E0023'
-};
+const REGION_OFFSET = { Delhi:0, Noida:8, Gurgaon:-12, Ghaziabad:18, Faridabad:5 };
+const STATION_VAR   = { s1:0,s2:15,s3:28,s4:-8,s5:5,s6:-15,s7:10,s8:20,s9:8,s10:2,s11:-5,s12:-12,s13:-18,s14:22,s15:30,s16:5,s17:-3 };
 
-const AQIForecast = ({ location }) => {
-  const [forecast, setForecast] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedHour, setSelectedHour] = useState(null);
-  const [viewMode, setViewMode] = useState('24'); // 24h, 48h, 72h
+function MapRecenter({ center }) {
+  const map = useMap();
+  useEffect(() => { map.setView(center, map.getZoom()); }, [center, map]);
+  return null;
+}
 
-  useEffect(() => {
-    if (location) {
-      fetchForecast();
-    }
-  }, [location]);
+const AQIMap = () => {
+  const [stations, setStations]   = useState([]);
+  const [live, setLive]           = useState(null);
+  const [loading, setLoading]     = useState(true);
+  const [viewMode, setViewMode]   = useState('pins');    // pins | heat
+  const [filter, setFilter]       = useState('all');     // all | good | moderate | poor
+  const [selected, setSelected]   = useState(null);
+  const [lastUpdated, setUpdated] = useState('');
+  const center = [28.6139, 77.2090];
 
-  const fetchForecast = async () => {
+  useEffect(() => { fetchData(); }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await axios.get(`${API_BASE}/forecast`, {
-        params: {
-          latitude: location.lat,
-          longitude: location.lon,
-          hours: 72
-        }
-      });
-      
-      setForecast(response.data);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching forecast:', error);
-      setLoading(false);
+      // Try backend stations endpoint first
+      const res = await fetch('http://localhost:8000/api/v1/forecast/stations');
+      if (res.ok) {
+        const data = await res.json();
+        setStations(data.stations || []);
+        setLive({ aqi: data.base_aqi, city: 'Delhi' });
+      } else {
+        throw new Error('stations endpoint failed');
+      }
+    } catch {
+      // Fallback: derive from live CSV
+      try {
+        const liveRes = await aqiAPI.getLive();
+        const base    = liveRes.data?.aqi || 150;
+        setLive(liveRes.data);
+        setStations(STATIONS.map(s => ({
+          ...s,
+          station_id:   s.id,
+          station_name: s.name,
+          latitude:     s.lat,
+          longitude:    s.lon,
+          aqi:          Math.max(20, base + (REGION_OFFSET[s.region] || 0) + (STATION_VAR[s.id] || 0)),
+          is_live:      s.primary || false,
+        })));
+      } catch (err) {
+        console.error('AQIMap: both sources failed', err);
+      }
     }
+    setUpdated(new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' }));
+    setLoading(false);
   };
 
-  const formatChartData = () => {
-    if (!forecast) return [];
-    
-    const hours = viewMode === '24' ? 24 : viewMode === '48' ? 48 : 72;
-    
-    return forecast.forecast_hours.slice(0, hours).map((hour, index) => ({
-      time: new Date(hour.timestamp).toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        hour12: false 
-      }),
-      fullDate: new Date(hour.timestamp).toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      }),
-      aqi: hour.aqi,
-      category: hour.category,
-      confidence: hour.confidence,
-      color: AQI_COLORS[hour.category]
-    }));
-  };
+  const filtered = stations.filter(s => {
+    if (filter === 'all')      return true;
+    if (filter === 'good')     return s.aqi <= 100;
+    if (filter === 'moderate') return s.aqi > 100 && s.aqi <= 200;
+    if (filter === 'poor')     return s.aqi > 200;
+    return true;
+  });
 
-  const getAQIRange = (aqi) => {
-    if (aqi <= 50) return { min: 0, max: 50, label: 'Good' };
-    if (aqi <= 100) return { min: 51, max: 100, label: 'Satisfactory' };
-    if (aqi <= 200) return { min: 101, max: 200, label: 'Moderate' };
-    if (aqi <= 300) return { min: 201, max: 300, label: 'Poor' };
-    if (aqi <= 400) return { min: 301, max: 400, label: 'Very Poor' };
-    return { min: 401, max: 500, label: 'Severe' };
-  };
+  const ncrAvg = stations.length
+    ? Math.round(stations.reduce((a, b) => a + b.aqi, 0) / stations.length)
+    : 0;
 
-  const CustomTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-white p-4 rounded-lg shadow-xl border-2" style={{ borderColor: data.color }}>
-          <p className="font-bold text-lg mb-1">AQI: {data.aqi}</p>
-          <p className="text-sm font-semibold mb-2" style={{ color: data.color }}>
-            {data.category}
-          </p>
-          <p className="text-xs text-gray-600 mb-1">{data.fullDate}</p>
-          <p className="text-xs text-gray-500">Confidence: {data.confidence}%</p>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const getForecastSummary = () => {
-    if (!forecast) return null;
-    
-    const hours24 = forecast.forecast_hours.slice(0, 24);
-    const avgAQI = Math.round(hours24.reduce((sum, h) => sum + h.aqi, 0) / hours24.length);
-    const maxAQI = Math.max(...hours24.map(h => h.aqi));
-    const minAQI = Math.min(...hours24.map(h => h.aqi));
-    
-    // Find worst period
-    const worstHour = hours24.reduce((worst, current) => 
-      current.aqi > worst.aqi ? current : worst
-    );
-    
-    return { avgAQI, maxAQI, minAQI, worstHour };
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading forecast...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!forecast) {
-    return (
-      <div className="text-center py-8 text-gray-500">
-        No forecast data available
-      </div>
-    );
-  }
-
-  const chartData = formatChartData();
-  const summary = getForecastSummary();
+  const worst = stations.length ? stations.reduce((a, b) => a.aqi > b.aqi ? a : b) : null;
+  const best  = stations.length ? stations.reduce((a, b) => a.aqi < b.aqi ? a : b) : null;
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
+    <div style={{ display:'flex', flexDirection:'column', gap:20, maxWidth:1200, margin:'0 auto', padding:20 }}>
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:16 }}>
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Air Quality Forecast</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Updated {new Date(forecast.generated_at).toLocaleString()}
+          <h2 style={{ fontSize:28, fontWeight:900, margin:0, color:'#1a1a1a' }}>🗺️ Delhi-NCR AQI Map</h2>
+          <p style={{ color:'#718096', margin:'4px 0 0 0', fontSize:14 }}>
+            Live air quality across {stations.length} monitoring stations
+            {lastUpdated && <span> • Updated {lastUpdated}</span>}
           </p>
         </div>
-        
-        {/* View Mode Selector */}
-        <div className="flex space-x-2">
-          {['24', '48', '72'].map(mode => (
-            <button
-              key={mode}
-              onClick={() => setViewMode(mode)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                viewMode === mode
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {mode}h
-            </button>
-          ))}
-        </div>
+        <button onClick={fetchData} style={{ padding:'10px 20px', background:'#eff6ff', border:'2px solid #bfdbfe', borderRadius:12, fontWeight:700, cursor:'pointer', fontSize:13, color:'#1d4ed8' }}>
+          🔄 Refresh
+        </button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg">
-          <p className="text-xs text-blue-600 font-semibold mb-1">CURRENT</p>
-          <p className="text-3xl font-bold text-blue-800">{forecast.current_aqi}</p>
-          <p className="text-xs text-blue-600 mt-1">AQI</p>
-        </div>
-        
-        <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg">
-          <p className="text-xs text-green-600 font-semibold mb-1">24H AVERAGE</p>
-          <p className="text-3xl font-bold text-green-800">{summary.avgAQI}</p>
-          <p className="text-xs text-green-600 mt-1">AQI</p>
-        </div>
-        
-        <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg">
-          <p className="text-xs text-orange-600 font-semibold mb-1">PEAK (24H)</p>
-          <p className="text-3xl font-bold text-orange-800">{summary.maxAQI}</p>
-          <p className="text-xs text-orange-600 mt-1">
-            {new Date(summary.worstHour.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', hour12: false })}
-          </p>
-        </div>
-        
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg">
-          <p className="text-xs text-purple-600 font-semibold mb-1">BEST (24H)</p>
-          <p className="text-3xl font-bold text-purple-800">{summary.minAQI}</p>
-          <p className="text-xs text-purple-600 mt-1">AQI</p>
-        </div>
-      </div>
-
-      {/* Chart */}
-      <div className="mb-6">
-        <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={chartData}>
-            <defs>
-              <linearGradient id="aqiGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#4A90E2" stopOpacity={0.8}/>
-                <stop offset="95%" stopColor="#4A90E2" stopOpacity={0.1}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-            <XAxis 
-              dataKey="time" 
-              stroke="#666"
-              style={{ fontSize: '12px' }}
-              interval={viewMode === '24' ? 2 : viewMode === '48' ? 5 : 8}
-            />
-            <YAxis 
-              stroke="#666"
-              style={{ fontSize: '12px' }}
-              domain={[0, 500]}
-              ticks={[0, 50, 100, 200, 300, 400, 500]}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend />
-            
-            {/* AQI Category Bands */}
-            <Area 
-              type="monotone" 
-              dataKey="aqi" 
-              stroke="#4A90E2" 
-              strokeWidth={3}
-              fill="url(#aqiGradient)"
-              name="AQI"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Category Reference Bands */}
-      <div className="bg-gray-50 rounded-lg p-4">
-        <h3 className="text-sm font-bold text-gray-700 mb-3">AQI Categories</h3>
-        <div className="grid grid-cols-6 gap-2">
-          {Object.entries(AQI_COLORS).map(([category, color]) => (
-            <div key={category} className="text-center">
-              <div 
-                className="h-2 rounded-full mb-1" 
-                style={{ backgroundColor: color }}
-              ></div>
-              <p className="text-xs text-gray-600">{category}</p>
+      {/* Summary cards */}
+      {!loading && stations.length > 0 && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:14 }}>
+          {[
+            { label:'NCR Average', value:ncrAvg,      color:helpers.getAQIColor(ncrAvg),      sub:helpers.getAQICategory(ncrAvg) },
+            { label:'Worst Station',value:worst?.aqi,  color:helpers.getAQIColor(worst?.aqi),  sub:worst?.station_name?.split(',')[0] },
+            { label:'Best Station', value:best?.aqi,   color:helpers.getAQIColor(best?.aqi),   sub:best?.station_name?.split(',')[0] },
+            { label:'Stations Live',value:stations.filter(s=>s.is_live).length + '/' + stations.length, color:'#16a34a', sub:'Active monitors' },
+          ].map(c => (
+            <div key={c.label} style={{ background:'white', borderRadius:16, padding:'16px 20px', boxShadow:'0 2px 10px rgba(0,0,0,0.06)', borderTop:`3px solid ${c.color}` }}>
+              <div style={{ fontSize:12, color:'#94a3b8', fontWeight:700, marginBottom:6 }}>{c.label}</div>
+              <div style={{ fontSize:28, fontWeight:900, color:c.color, fontFamily:'monospace' }}>{c.value}</div>
+              <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>{c.sub}</div>
             </div>
           ))}
         </div>
+      )}
+
+      {/* Controls */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
+        <div style={{ display:'flex', gap:8, background:'#f8fafc', padding:4, borderRadius:12 }}>
+          {[['pins','📍 Stations'],['heat','🔥 Heatmap']].map(([mode, label]) => (
+            <button key={mode} onClick={() => setViewMode(mode)} style={{
+              padding:'8px 16px', borderRadius:9, border:'none', fontWeight:700, fontSize:13,
+              background: viewMode === mode ? 'linear-gradient(135deg,#3b82f6,#6366f1)' : 'transparent',
+              color: viewMode === mode ? 'white' : '#4a5568', cursor:'pointer',
+            }}>{label}</button>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          {[['all','All'],['good','Good (≤100)'],['moderate','Moderate'],['poor','Poor (>200)']].map(([f, label]) => (
+            <button key={f} onClick={() => setFilter(f)} style={{
+              padding:'7px 14px', borderRadius:20, border:'2px solid', fontSize:12, fontWeight:700, cursor:'pointer',
+              background: filter === f ? '#3b82f6' : 'white',
+              color: filter === f ? 'white' : '#4a5568',
+              borderColor: filter === f ? '#3b82f6' : '#e2e8f0',
+            }}>{label}</button>
+          ))}
+        </div>
       </div>
 
-      {/* Hourly Breakdown (First 12 hours) */}
-      <div className="mt-6">
-        <h3 className="text-lg font-bold text-gray-800 mb-3">Next 12 Hours</h3>
-        <div className="grid grid-cols-6 gap-3">
-          {forecast.forecast_hours.slice(0, 12).map((hour, index) => (
-            <div 
-              key={index}
-              className="bg-white border-2 rounded-lg p-3 text-center cursor-pointer hover:shadow-lg transition-shadow"
-              style={{ borderColor: AQI_COLORS[hour.category] }}
-              onClick={() => setSelectedHour(hour)}
-            >
-              <p className="text-xs text-gray-500 mb-1">
-                {new Date(hour.timestamp).toLocaleTimeString('en-US', { 
-                  hour: '2-digit', 
-                  hour12: false 
-                })}
-              </p>
-              <p 
-                className="text-2xl font-bold mb-1"
-                style={{ color: AQI_COLORS[hour.category] }}
+      {/* Map */}
+      <div style={{ borderRadius:20, overflow:'hidden', boxShadow:'0 4px 24px rgba(0,0,0,0.1)', height:520 }}>
+        {loading ? (
+          <div style={{ height:'100%', display:'flex', alignItems:'center', justifyContent:'center', background:'#f8fafc', flexDirection:'column', gap:16 }}>
+            <div style={{ fontSize:48 }}>🗺️</div>
+            <div style={{ color:'#718096', fontWeight:600 }}>Loading live station data…</div>
+          </div>
+        ) : (
+          <MapContainer center={center} zoom={10} style={{ height:'100%', width:'100%' }}>
+            <MapRecenter center={center} />
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='© <a href="https://openstreetmap.org">OpenStreetMap</a>'
+            />
+
+            {/* Station pins */}
+            {viewMode === 'pins' && filtered.map(s => (
+              <CircleMarker
+                key={s.station_id || s.id}
+                center={[s.latitude || s.lat, s.longitude || s.lon]}
+                radius={s.is_live ? 14 : 10}
+                pathOptions={{
+                  fillColor:   helpers.getAQIColor(s.aqi),
+                  fillOpacity: 0.9,
+                  color:       s.is_live ? '#fff' : '#ffffff88',
+                  weight:      s.is_live ? 3 : 1.5,
+                }}
+                eventHandlers={{ click: () => setSelected(s) }}
               >
-                {hour.aqi}
-              </p>
-              <p className="text-xs font-medium text-gray-600">{hour.category}</p>
+                <Popup>
+                  <div style={{ minWidth:190, fontFamily:'sans-serif' }}>
+                    <div style={{ fontWeight:800, fontSize:14, marginBottom:6, color:'#1a1a1a' }}>
+                      {s.is_live ? '🟢 ' : ''}{s.station_name || s.name}
+                    </div>
+                    <div style={{ fontSize:32, fontWeight:900, color:helpers.getAQIColor(s.aqi), fontFamily:'monospace', marginBottom:4 }}>
+                      {s.aqi}
+                    </div>
+                    <div style={{ fontSize:13, fontWeight:700, color:helpers.getAQIColor(s.aqi), marginBottom:8 }}>
+                      {helpers.getAQICategory(s.aqi)}
+                    </div>
+                    {s.pm25 != null && <div style={{ fontSize:12, color:'#4a5568' }}>PM2.5: <strong>{Math.round(s.pm25)} μg/m³</strong></div>}
+                    {s.pm10 != null && <div style={{ fontSize:12, color:'#4a5568' }}>PM10: <strong>{Math.round(s.pm10)} μg/m³</strong></div>}
+                    <div style={{ fontSize:11, color:'#94a3b8', marginTop:6 }}>
+                      📍 {s.region} {s.is_live ? '• Live reading' : '• Estimated'}
+                    </div>
+                    <div style={{ marginTop:10, padding:'6px 10px', background:helpers.getAQIColor(s.aqi) + '15', borderRadius:8, fontSize:11, color:'#1a1a1a' }}>
+                      {s.aqi <= 50  ? '✅ Great for outdoor activities' :
+                       s.aqi <= 100 ? '⚠️ Sensitive groups should be cautious' :
+                       s.aqi <= 200 ? '😷 Wear mask outdoors' :
+                       s.aqi <= 300 ? '🚫 Avoid outdoor activities' :
+                                      '🆘 Stay indoors — health emergency'}
+                    </div>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            ))}
+
+            {/* Heatmap mode — large transparent circles */}
+            {viewMode === 'heat' && filtered.map(s => (
+              <CircleMarker
+                key={s.station_id || s.id}
+                center={[s.latitude || s.lat, s.longitude || s.lon]}
+                radius={35}
+                pathOptions={{
+                  fillColor:   helpers.getAQIColor(s.aqi),
+                  fillOpacity: 0.25,
+                  color:       helpers.getAQIColor(s.aqi),
+                  weight:      1,
+                  opacity:     0.4,
+                }}
+              >
+                <Popup>
+                  <div style={{ fontFamily:'sans-serif' }}>
+                    <strong>{s.station_name || s.name}</strong><br/>
+                    AQI: <strong style={{ color:helpers.getAQIColor(s.aqi) }}>{s.aqi}</strong> — {helpers.getAQICategory(s.aqi)}
+                  </div>
+                </Popup>
+              </CircleMarker>
+            ))}
+          </MapContainer>
+        )}
+      </div>
+
+      {/* Station list */}
+      <div style={{ background:'white', borderRadius:20, padding:24, boxShadow:'0 4px 20px rgba(0,0,0,0.07)' }}>
+        <h3 style={{ fontSize:18, fontWeight:800, margin:'0 0 16px 0', color:'#1a1a1a' }}>
+          📋 All Stations ({filtered.length})
+        </h3>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
+          {filtered.sort((a,b) => b.aqi - a.aqi).map(s => (
+            <div key={s.station_id || s.id} style={{
+              display:'flex', alignItems:'center', gap:14, padding:'12px 16px',
+              background:`${helpers.getAQIColor(s.aqi)}08`,
+              border:`1.5px solid ${helpers.getAQIColor(s.aqi)}25`,
+              borderLeft:`4px solid ${helpers.getAQIColor(s.aqi)}`,
+              borderRadius:12, cursor:'pointer', transition:'transform 0.2s',
+            }}
+              onMouseEnter={e => e.currentTarget.style.transform='translateX(4px)'}
+              onMouseLeave={e => e.currentTarget.style.transform=''}
+            >
+              <div style={{ fontSize:28, fontWeight:900, color:helpers.getAQIColor(s.aqi), fontFamily:'monospace', minWidth:48, textAlign:'center' }}>
+                {s.aqi}
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:700, fontSize:13, color:'#1a1a1a', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                  {s.is_live ? '🟢 ' : ''}{s.station_name || s.name}
+                </div>
+                <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>{s.region} • {helpers.getAQICategory(s.aqi)}</div>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Key Insights */}
-      <div className="mt-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-        <h4 className="font-bold text-blue-800 mb-2">📊 Key Insights</h4>
-        <ul className="space-y-1 text-sm text-blue-900">
-          <li>• Air quality expected to {summary.avgAQI > forecast.current_aqi ? 'worsen' : 'improve'} over next 24 hours</li>
-          <li>• Peak pollution expected around {new Date(summary.worstHour.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</li>
-          <li>• Best time for outdoor activities: early morning (6-8 AM)</li>
-          <li>• {summary.maxAQI > 200 ? '⚠️ High pollution alert - limit outdoor exposure' : '✓ Moderate conditions expected'}</li>
-        </ul>
+      {/* AQI Legend */}
+      <div style={{ background:'white', borderRadius:14, padding:'14px 20px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)', display:'flex', alignItems:'center', gap:20, flexWrap:'wrap' }}>
+        <span style={{ fontSize:13, fontWeight:700, color:'#64748b' }}>AQI Scale:</span>
+        {[['0–50','Good','#00E400'],['51–100','Satisfactory','#FFD700'],['101–200','Moderate','#FF7E00'],['201–300','Poor','#FF0000'],['301–400','Very Poor','#8F3F97'],['400+','Severe','#7E0023']].map(([range, label, color]) => (
+          <div key={label} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12 }}>
+            <div style={{ width:12, height:12, borderRadius:'50%', background:color }} />
+            <span style={{ color:'#64748b' }}>{range} <strong>{label}</strong></span>
+          </div>
+        ))}
       </div>
     </div>
   );
 };
 
-export default AQIForecast;
+export default AQIMap;

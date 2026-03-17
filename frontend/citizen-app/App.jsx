@@ -1,53 +1,65 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Navbar from './src/components/Navbar';
-import Home from './src/pages/Home';
-import Dashboard from './src/pages/Dashboard';
-import RouteMap from './src/pages/RouteMap';
-import { helpers } from './src/services/api';
-import './App.css';
+import Navbar from './components/Navbar';
+import AQIDashboard from './components/AQIDashboard';
+import AQIForecast from './components/AQIForecast';
+import HealthAlerts from './components/HealthAlerts';
+import SafeRoute from './components/SafeRoute';
+import { aqiAPI } from './services/api';
 
+// ── Simple page wrappers ─────────────────────────────────────────────────────
+const PageWrapper = ({ children, title }) => (
+  <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#f0f4ff 0%,#e8f5e9 100%)' }}>
+    {children}
+  </div>
+);
+
+const ForecastPage = ({ liveAqi }) => (
+  <PageWrapper>
+    <div style={{ maxWidth:1100, margin:'0 auto', padding:'32px 20px' }}>
+      <AQIForecast location={{ lat:28.6139, lon:77.2090 }} />
+    </div>
+  </PageWrapper>
+);
+
+const AlertsPage = ({ liveAqi }) => (
+  <PageWrapper>
+    <div style={{ maxWidth:1100, margin:'0 auto', padding:'32px 20px' }}>
+      <HealthAlerts currentAQI={liveAqi} />
+    </div>
+  </PageWrapper>
+);
+
+const RoutesPage = () => (
+  <PageWrapper>
+    <div style={{ maxWidth:1100, margin:'0 auto', padding:'32px 20px' }}>
+      <SafeRoute />
+    </div>
+  </PageWrapper>
+);
+
+// ── App ──────────────────────────────────────────────────────────────────────
 function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [liveAqi, setLiveAqi] = useState(null);
 
   useEffect(() => {
-    // Check if user is authenticated
-    const storedUser = helpers.getUser();
-    if (storedUser) {
-      setUser(storedUser);
-    }
-    setLoading(false);
+    aqiAPI.getLive()
+      .then(r => setLiveAqi(r.data?.aqi))
+      .catch(() => {});
   }, []);
-
-  const handleLogout = () => {
-    helpers.removeAuthToken();
-    setUser(null);
-  };
-
-  if (loading) {
-    return (
-      <div className="app-loading">
-        <div className="loading-spinner"></div>
-        <p>Loading AirVision...</p>
-      </div>
-    );
-  }
 
   return (
     <Router>
-      <div className="app">
-        <Navbar user={user} onLogout={handleLogout} />
-        
-        <main className="main-content">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/routes" element={<RouteMap />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-      </div>
+      <Navbar liveAqi={liveAqi} />
+      <Routes>
+        <Route path="/"          element={<AQIDashboard />} />
+        <Route path="/dashboard" element={<AQIDashboard />} />
+        <Route path="/forecast"  element={<ForecastPage  liveAqi={liveAqi} />} />
+        <Route path="/alerts"    element={<AlertsPage    liveAqi={liveAqi} />} />
+        <Route path="/routes"    element={<RoutesPage />} />
+        {/* catch-all */}
+        <Route path="*"          element={<Navigate to="/" replace />} />
+      </Routes>
     </Router>
   );
 }

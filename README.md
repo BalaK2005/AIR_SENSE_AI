@@ -261,3 +261,152 @@ For issues and questions:
 ---
 
 **Made with 🌍 AirSense AI**
+# 🌬️ AIR_SENSE — Hyperlocal NCR Air Quality Monitoring System
+
+> Real-time AQI monitoring, forecasting, and policy analysis for Delhi-NCR powered by live AQICN data, Python ML pipeline, and React dashboards.
+
+---
+
+## 🏗️ Architecture
+
+```
+AIR_SENSE/
+├── data-pipeline/          # Python data collection (5 NCR cities, every 30 min)
+│   ├── collectors/
+│   │   ├── collect_all.py  # Multi-city parallel collector ← MAIN
+│   │   ├── scheduler.py    # Auto-runs every 30 minutes
+│   │   ├── aqi_collector.py
+│   │   └── weather_collector.py
+│   └── config.py
+├── data/raw/               # CSV files (aqi_YYYYMMDD.csv, weather_YYYYMMDD.csv)
+├── backend/                # FastAPI (port 8000)
+│   ├── main.py
+│   └── app/api/v1/endpoints/
+│       ├── csv_aqi_router.py   # /aqi/csv/* — live CSV data
+│       ├── forecast.py         # /forecast/* — ML regression forecast
+│       └── ...
+└── frontend/
+    ├── citizen-app/        # React citizen app (port 3000)
+    │   └── src/            # Dashboard, Forecast, Alerts, Safe Routes
+    └── policy-dashboard/   # React policy dashboard (port 3001)
+        └── src/            # Overview, Source Analysis, Simulation, Recommendations
+```
+
+---
+
+## ⚡ Quick Start
+
+### 1. Prerequisites
+```
+Node.js 18+    Python 3.11+    npm
+```
+
+### 2. Environment Setup
+```bash
+# Copy and fill in your API keys
+copy .env.example .env
+```
+
+### 3. Start Everything (4 terminals)
+
+**Terminal 1 — Data Pipeline:**
+```powershell
+cd "AIR_SENSE\data-pipeline\collectors"
+& "AIR_SENSE\venv\Scripts\Activate.ps1"
+python scheduler.py
+```
+
+**Terminal 2 — Backend API:**
+```powershell
+cd "AIR_SENSE\backend"
+& ".\venv\Scripts\Activate.ps1"
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+**Terminal 3 — Citizen App:**
+```powershell
+cd "AIR_SENSE\frontend\citizen-app"
+npm start        # → http://localhost:3000
+```
+
+**Terminal 4 — Policy Dashboard:**
+```powershell
+cd "AIR_SENSE\frontend\policy-dashboard"
+npm start        # → http://localhost:3001
+```
+
+---
+
+## 🌐 Live Endpoints
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost:3000` | Citizen App — Dashboard, Forecast, Alerts, Safe Routes |
+| `http://localhost:3001` | Policy Dashboard — Overview, Source Analysis, Simulation |
+| `http://localhost:8000/docs` | FastAPI Swagger UI |
+| `http://localhost:8000/api/v1/aqi/csv/live` | Live Delhi AQI (JSON) |
+| `http://localhost:8000/api/v1/forecast/summary` | 6-hour forecast summary |
+| `http://localhost:8000/api/v1/forecast/hourly?hours=72` | 72-hour hourly forecast |
+| `http://localhost:8000/api/v1/forecast/stations` | All 17 NCR stations |
+
+---
+
+## 🔑 API Keys Required
+
+| Key | Source | Used For |
+|-----|--------|----------|
+| `AQICN_TOKEN` | https://aqicn.org/data-platform/token/ | Real-time AQI data |
+| `OPENWEATHER_KEY` | https://openweathermap.org/api | Weather data |
+
+---
+
+## 📊 Data Flow
+
+```
+AQICN API ──────────────────────────────────────────────────────────────┐
+OpenWeather API ──────────────────────────────────────────────────────┐ │
+                                                                       ↓ ↓
+                                        data-pipeline/collectors/ → data/raw/*.csv
+                                                                            │
+                                                                            ↓
+                                                    backend/app/api/v1/endpoints/
+                                                    csv_aqi_router.py (live data)
+                                                    forecast.py (ML regression)
+                                                                            │
+                                                        ┌───────────────────┤
+                                                        ↓                   ↓
+                                              citizen-app          policy-dashboard
+                                           (port 3000)              (port 3001)
+```
+
+---
+
+## 🗺️ NCR Cities Monitored
+
+| City | AQICN Feed | Stations |
+|------|-----------|---------|
+| Delhi | `Delhi` | 8 stations |
+| Noida | `noida` | 3 stations |
+| Gurgaon | `gurgaon` | 2 stations |
+| Ghaziabad | `ghaziabad` | 2 stations |
+| Faridabad | `faridabad` | 2 stations |
+
+---
+
+## 🤖 ML Forecasting
+
+The `/forecast/*` endpoints use:
+- **Weighted moving average** of last 12 CSV readings as baseline
+- **OLS linear regression** to detect rising/falling trend
+- **Delhi diurnal multipliers** (rush hour peaks at 7-9 AM and 6-9 PM)
+- **72-hour ahead** forecasting with confidence decay (95% → 55%)
+
+No TensorFlow or database required — pure Python on your CSV files.
+
+---
+
+## ⚠️ Known Non-Issues
+
+- `Redis connection failed` — harmless, caching is disabled but everything works
+- Pydantic `model_info` warnings — harmless version mismatch warnings
+- bcrypt warning from passlib — harmless after the 4.0.1 fix

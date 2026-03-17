@@ -121,6 +121,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"          # ✅ FIX: ignore unknown env vars like AQICN_TOKEN, CITY_NAME etc.
 
 
 @lru_cache()

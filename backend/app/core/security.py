@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.database import get_db
 
 # Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_PREFIX}/auth/login")
@@ -27,49 +27,24 @@ ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """
-    Verify a plain password against its hash
-    
-    Args:
-        plain_password: Plain text password
-        hashed_password: Hashed password from database
-        
-    Returns:
-        bool: True if password matches, False otherwise
-    """
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify a plain password against its hash"""
+    # Truncate to 72 bytes before verifying (matches how we hash)
+    truncated = plain_password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+    return pwd_context.verify(truncated, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
     """
-    Hash a password using bcrypt
-    
-    Args:
-        password: Plain text password (max 72 bytes due to bcrypt limitation)
-        
-    Returns:
-        str: Hashed password
-        
-    Raises:
-        ValueError: If password exceeds 72 bytes
+    Hash a password using bcrypt.
+    Automatically truncates to 72 bytes (bcrypt hard limit).
     """
-    # bcrypt has a 72-byte limitation
-    if len(password.encode('utf-8')) > 72:
-        raise ValueError("Password cannot exceed 72 bytes (approximately 72 characters). Please use a shorter password.")
-    return pwd_context.hash(password)
+    # ✅ FIX: truncate instead of raising ValueError
+    truncated = password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+    return pwd_context.hash(truncated)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """
-    Create a JWT access token
-    
-    Args:
-        data: Dictionary containing token data (user_id, username, etc.)
-        expires_delta: Optional expiration time delta
-        
-    Returns:
-        str: Encoded JWT token
-    """
+    """Create a JWT access token"""
     to_encode = data.copy()
     
     if expires_delta:
@@ -88,15 +63,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def create_refresh_token(data: dict) -> str:
-    """
-    Create a JWT refresh token with longer expiration
-    
-    Args:
-        data: Dictionary containing token data
-        
-    Returns:
-        str: Encoded JWT refresh token
-    """
+    """Create a JWT refresh token with longer expiration"""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
     
@@ -111,18 +78,7 @@ def create_refresh_token(data: dict) -> str:
 
 
 def decode_token(token: str) -> Dict:
-    """
-    Decode and validate a JWT token
-    
-    Args:
-        token: JWT token string
-        
-    Returns:
-        dict: Decoded token payload
-        
-    Raises:
-        HTTPException: If token is invalid or expired
-    """
+    """Decode and validate a JWT token"""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
@@ -138,19 +94,7 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ) -> Dict:
-    """
-    Get the current authenticated user from JWT token
-    
-    Args:
-        token: JWT token from Authorization header
-        db: Database session
-        
-    Returns:
-        dict: User information
-        
-    Raises:
-        HTTPException: If token is invalid or user not found
-    """
+    """Get the current authenticated user from JWT token"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -169,7 +113,6 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
     
-    # Verify user exists and is active
     from app.models.user import User
     user = db.query(User).filter(User.id == user_id).first()
     
@@ -194,33 +137,14 @@ async def get_current_user(
 async def get_current_active_user(
     current_user: Dict = Depends(get_current_user)
 ) -> Dict:
-    """
-    Get current active user (wrapper function for clarity)
-    
-    Args:
-        current_user: Current user from get_current_user dependency
-        
-    Returns:
-        dict: Current user information
-    """
+    """Get current active user"""
     return current_user
 
 
 def require_policy_maker(
     current_user: Dict = Depends(get_current_user)
 ) -> Dict:
-    """
-    Require user to be a policy maker or admin
-    
-    Args:
-        current_user: Current authenticated user
-        
-    Returns:
-        dict: Current user information
-        
-    Raises:
-        HTTPException: If user doesn't have required permissions
-    """
+    """Require user to be a policy maker or admin"""
     if current_user["user_type"] not in ["policy_maker", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -232,18 +156,7 @@ def require_policy_maker(
 def require_admin(
     current_user: Dict = Depends(get_current_user)
 ) -> Dict:
-    """
-    Require user to be an admin
-    
-    Args:
-        current_user: Current authenticated user
-        
-    Returns:
-        dict: Current user information
-        
-    Raises:
-        HTTPException: If user is not an admin
-    """
+    """Require user to be an admin"""
     if current_user["user_type"] != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -255,18 +168,7 @@ def require_admin(
 def require_researcher(
     current_user: Dict = Depends(get_current_user)
 ) -> Dict:
-    """
-    Require user to be a researcher, policy maker, or admin
-    
-    Args:
-        current_user: Current authenticated user
-        
-    Returns:
-        dict: Current user information
-        
-    Raises:
-        HTTPException: If user doesn't have required permissions
-    """
+    """Require user to be a researcher, policy maker, or admin"""
     if current_user["user_type"] not in ["researcher", "policy_maker", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -276,53 +178,24 @@ def require_researcher(
 
 
 def verify_api_key(api_key: str) -> bool:
-    """
-    Verify an API key for external integrations
-    
-    Args:
-        api_key: API key to verify
-        
-    Returns:
-        bool: True if valid, False otherwise
-    """
-    # In production, check against database of valid API keys
-    # For now, simple validation
+    """Verify an API key for external integrations"""
     return api_key.startswith("av_") and len(api_key) > 20
 
 
 def generate_api_key(user_id: int) -> str:
-    """
-    Generate a new API key for a user
-    
-    Args:
-        user_id: User ID
-        
-    Returns:
-        str: Generated API key
-    """
+    """Generate a new API key for a user"""
     import secrets
     import hashlib
     
-    # Generate random key
     random_part = secrets.token_urlsafe(32)
-    
-    # Create hash with user_id for uniqueness
     hash_input = f"{user_id}_{random_part}_{datetime.utcnow().isoformat()}"
     key_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:32]
     
     return f"av_{key_hash}"
 
 
-def validate_password_strength(password: str) -> tuple[bool, str]:
-    """
-    Validate password strength
-    
-    Args:
-        password: Password to validate
-        
-    Returns:
-        tuple: (is_valid, error_message)
-    """
+def validate_password_strength(password: str) -> tuple:
+    """Validate password strength"""
     if len(password) < 8:
         return False, "Password must be at least 8 characters long"
     
@@ -343,129 +216,41 @@ def validate_password_strength(password: str) -> tuple[bool, str]:
 
 
 def sanitize_input(input_string: str) -> str:
-    """
-    Sanitize user input to prevent injection attacks
-    
-    Args:
-        input_string: Input to sanitize
-        
-    Returns:
-        str: Sanitized string
-    """
-    # Remove potentially dangerous characters
+    """Sanitize user input to prevent injection attacks"""
     dangerous_chars = ['<', '>', '"', "'", ';', '\\', '/', '--']
     sanitized = input_string
-    
     for char in dangerous_chars:
         sanitized = sanitized.replace(char, '')
-    
     return sanitized.strip()
 
 
 def check_rate_limit(user_id: int, endpoint: str, limit: int = 100, window: int = 60) -> bool:
-    """
-    Check if user has exceeded rate limit
-    
-    Args:
-        user_id: User ID
-        endpoint: API endpoint being accessed
-        limit: Maximum requests allowed
-        window: Time window in seconds
-        
-    Returns:
-        bool: True if within limit, False if exceeded
-    """
-    # In production, implement using Redis
-    # For now, simplified version
-    # This would store request counts per user per endpoint
-    
+    """Check if user has exceeded rate limit"""
     from app.services.cache_service import cache_get, cache_set
     
     cache_key = f"rate_limit:{user_id}:{endpoint}"
     
     try:
         request_count = cache_get(cache_key)
-        
         if request_count is None:
             cache_set(cache_key, 1, ttl=window)
             return True
-        
         if int(request_count) >= limit:
             return False
-        
         cache_set(cache_key, int(request_count) + 1, ttl=window)
         return True
-        
     except:
-        # If cache fails, allow the request
         return True
-
-
-def encrypt_sensitive_data(data: str) -> str:
-    """
-    Encrypt sensitive data (like API keys, tokens)
-    
-    Args:
-        data: Data to encrypt
-        
-    Returns:
-        str: Encrypted data
-    """
-    from cryptography.fernet import Fernet
-    
-    # In production, load key from secure storage
-    # For now, using settings secret key
-    key = Fernet.generate_key()
-    cipher = Fernet(key)
-    
-    encrypted = cipher.encrypt(data.encode())
-    return encrypted.decode()
-
-
-def decrypt_sensitive_data(encrypted_data: str) -> str:
-    """
-    Decrypt sensitive data
-    
-    Args:
-        encrypted_data: Encrypted data
-        
-    Returns:
-        str: Decrypted data
-    """
-    from cryptography.fernet import Fernet
-    
-    # In production, load key from secure storage
-    key = Fernet.generate_key()
-    cipher = Fernet(key)
-    
-    decrypted = cipher.decrypt(encrypted_data.encode())
-    return decrypted.decode()
 
 
 def generate_verification_token() -> str:
-    """
-    Generate a verification token for email verification
-    
-    Returns:
-        str: Verification token
-    """
+    """Generate a verification token for email verification"""
     import secrets
     return secrets.token_urlsafe(32)
 
 
 def verify_email_token(token: str, email: str) -> bool:
-    """
-    Verify email verification token
-    
-    Args:
-        token: Verification token
-        email: Email address
-        
-    Returns:
-        bool: True if valid, False otherwise
-    """
-    # In production, check against database
-    # This is a simplified version
+    """Verify email verification token"""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload.get("email") == email
@@ -474,15 +259,7 @@ def verify_email_token(token: str, email: str) -> bool:
 
 
 def create_email_verification_token(email: str) -> str:
-    """
-    Create a token for email verification
-    
-    Args:
-        email: Email address
-        
-    Returns:
-        str: Verification token
-    """
+    """Create a token for email verification"""
     expire = datetime.utcnow() + timedelta(hours=24)
     to_encode = {
         "email": email,
@@ -493,15 +270,7 @@ def create_email_verification_token(email: str) -> str:
 
 
 def create_password_reset_token(email: str) -> str:
-    """
-    Create a token for password reset
-    
-    Args:
-        email: Email address
-        
-    Returns:
-        str: Reset token
-    """
+    """Create a token for password reset"""
     expire = datetime.utcnow() + timedelta(hours=1)
     to_encode = {
         "email": email,
@@ -512,35 +281,21 @@ def create_password_reset_token(email: str) -> str:
 
 
 def verify_password_reset_token(token: str) -> Optional[str]:
-    """
-    Verify password reset token and return email
-    
-    Args:
-        token: Reset token
-        
-    Returns:
-        str: Email if valid, None otherwise
-    """
+    """Verify password reset token and return email"""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        
         if payload.get("type") != "password_reset":
             return None
-            
         return payload.get("email")
     except:
         return None
 
 
-# Optional: Session management
 class SessionManager:
-    """
-    Manage user sessions (optional - for more advanced session control)
-    """
+    """Manage user sessions"""
     
     @staticmethod
     def create_session(user_id: int, token: str) -> str:
-        """Create a new session"""
         from app.services.cache_service import cache_set
         import uuid
         
@@ -550,23 +305,17 @@ class SessionManager:
             "token": token,
             "created_at": datetime.utcnow().isoformat()
         }
-        
-        # Store in cache for 24 hours
         cache_set(f"session:{session_id}", session_data, ttl=86400)
         return session_id
     
     @staticmethod
     def validate_session(session_id: str) -> Optional[Dict]:
-        """Validate session"""
         from app.services.cache_service import cache_get
-        
         return cache_get(f"session:{session_id}")
     
     @staticmethod
     def invalidate_session(session_id: str) -> bool:
-        """Invalidate session"""
-        from app.services.cache_service import cache_get, cache_set
-        
+        from app.services.cache_service import cache_set
         try:
             cache_set(f"session:{session_id}", None, ttl=1)
             return True

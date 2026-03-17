@@ -1,0 +1,65 @@
+# Render deployment configuration
+# Deploy this file at the root of your repository
+
+services:
+  # ── FastAPI Backend ──────────────────────────────────────────────────────
+  - type: web
+    name: airsense-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: AQICN_TOKEN
+        sync: false          # Set manually in Render dashboard
+      - key: OPENWEATHER_KEY
+        sync: false          # Set manually in Render dashboard
+      - key: CITY_NAME
+        value: Delhi
+      - key: LATITUDE
+        value: "28.6139"
+      - key: LONGITUDE
+        value: "77.2090"
+      - key: DATABASE_URL
+        value: sqlite:///./airvision.db
+      - key: CORS_ORIGINS
+        value: '["https://airsense-citizen.onrender.com","https://airsense-policy.onrender.com","http://localhost:3000","http://localhost:3001"]'
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: DEBUG
+        value: "False"
+    healthCheckPath: /health
+
+  # ── Citizen App ──────────────────────────────────────────────────────────
+  - type: web
+    name: airsense-citizen
+    runtime: static
+    rootDir: frontend/citizen-app
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://airsense-backend.onrender.com/api/v1
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # ── Policy Dashboard ─────────────────────────────────────────────────────
+  - type: web
+    name: airsense-policy
+    runtime: static
+    rootDir: frontend/policy-dashboard
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://airsense-backend.onrender.com/api/v1
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

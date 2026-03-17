@@ -67,12 +67,10 @@ class DataAnalyzer:
         print("🌫️  AQI ANALYSIS")
         print("="*60)
         
-        # Basic stats
         print(f"\n📊 OVERALL STATISTICS:")
         print(f"   Total Records: {len(aqi_df)}")
         print(f"   Date Range: {aqi_df['timestamp'].min()} to {aqi_df['timestamp'].max()}")
         
-        # AQI stats
         print(f"\n📈 AQI METRICS:")
         print(f"   Current AQI: {aqi_df['aqi'].iloc[-1]:.0f} - {self.get_aqi_category(aqi_df['aqi'].iloc[-1])}")
         print(f"   Average AQI: {aqi_df['aqi'].mean():.1f}")
@@ -80,14 +78,12 @@ class DataAnalyzer:
         print(f"   Lowest AQI: {aqi_df['aqi'].min():.0f}")
         print(f"   Std Deviation: {aqi_df['aqi'].std():.1f}")
         
-        # Pollutants
         print(f"\n💨 POLLUTANT LEVELS:")
         print(f"   PM2.5 Average: {aqi_df['pm25'].mean():.1f} μg/m³")
         print(f"   PM10 Average: {aqi_df['pm10'].mean():.1f} μg/m³")
         print(f"   NO2 Average: {aqi_df['no2'].mean():.1f} ppb")
         print(f"   O3 Average: {aqi_df['o3'].mean():.1f} ppb")
         
-        # Health recommendations
         current_aqi = aqi_df['aqi'].iloc[-1]
         print(f"\n💡 HEALTH RECOMMENDATIONS:")
         if current_aqi <= 50:
@@ -118,12 +114,10 @@ class DataAnalyzer:
         print("🌤️  WEATHER ANALYSIS")
         print("="*60)
         
-        # Basic stats
         print(f"\n📊 OVERALL STATISTICS:")
         print(f"   Total Records: {len(weather_df)}")
         print(f"   Date Range: {weather_df['timestamp'].min()} to {weather_df['timestamp'].max()}")
         
-        # Temperature
         print(f"\n🌡️  TEMPERATURE:")
         print(f"   Current: {weather_df['temperature'].iloc[-1]:.1f}°C")
         print(f"   Average: {weather_df['temperature'].mean():.1f}°C")
@@ -131,17 +125,14 @@ class DataAnalyzer:
         print(f"   Lowest: {weather_df['temperature'].min():.1f}°C")
         print(f"   Feels Like: {weather_df['feels_like'].iloc[-1]:.1f}°C")
         
-        # Humidity
         print(f"\n💧 HUMIDITY:")
         print(f"   Current: {weather_df['humidity'].iloc[-1]:.0f}%")
         print(f"   Average: {weather_df['humidity'].mean():.1f}%")
         
-        # Wind
         print(f"\n🌬️  WIND:")
         print(f"   Current Speed: {weather_df['wind_speed'].iloc[-1]:.2f} m/s")
         print(f"   Average Speed: {weather_df['wind_speed'].mean():.2f} m/s")
         
-        # Conditions
         print(f"\n☁️  CURRENT CONDITIONS:")
         print(f"   Weather: {weather_df['weather_main'].iloc[-1]}")
         print(f"   Description: {weather_df['weather_description'].iloc[-1].title()}")
@@ -156,27 +147,20 @@ class DataAnalyzer:
             print("\n⚠️  Cannot analyze correlations - missing data")
             return
         
-        # Merge data on timestamp (approximate matching)
         aqi_df = aqi_df.copy()
         weather_df = weather_df.copy()
         
         aqi_df['date'] = aqi_df['timestamp'].dt.date
         weather_df['date'] = weather_df['timestamp'].dt.date
         
-        # Select only numeric columns for aggregation
-        aqi_numeric_cols = aqi_df.select_dtypes(include=[np.number]).columns.tolist()
-        weather_numeric_cols = weather_df.select_dtypes(include=[np.number]).columns.tolist()
+        # ✅ FIX: Select only needed columns BEFORE merging to avoid _x/_y conflicts
+        aqi_keep = [c for c in ['date', 'aqi', 'pm25', 'pm10', 'no2', 'o3'] if c in aqi_df.columns]
+        weather_keep = [c for c in ['date', 'temperature', 'humidity', 'wind_speed', 'pressure'] if c in weather_df.columns]
         
-        # Group by date and calculate mean for numeric columns only
-        aqi_grouped = aqi_df.groupby('date')[aqi_numeric_cols].mean()
-        weather_grouped = weather_df.groupby('date')[weather_numeric_cols].mean()
+        aqi_grouped = aqi_df[aqi_keep].groupby('date').mean()
+        weather_grouped = weather_df[weather_keep].groupby('date').mean()
         
-        merged = pd.merge(
-            aqi_grouped,
-            weather_grouped,
-            on='date',
-            how='inner'
-        )
+        merged = pd.merge(aqi_grouped, weather_grouped, on='date', how='inner')
         
         if len(merged) < 2:
             print("\n⚠️  Need more data points for correlation analysis")
@@ -186,16 +170,16 @@ class DataAnalyzer:
         print("\n" + "="*60)
         print("🔗 CORRELATION ANALYSIS")
         print("="*60)
-        
         print(f"\n📊 Correlation between AQI and Weather:")
-        print(f"   AQI vs Temperature: {merged['aqi'].corr(merged['temperature']):.3f}")
-        print(f"   AQI vs Humidity: {merged['aqi'].corr(merged['humidity']):.3f}")
-        print(f"   AQI vs Wind Speed: {merged['aqi'].corr(merged['wind_speed']):.3f}")
-        print(f"   AQI vs Pressure: {merged['aqi'].corr(merged['pressure']):.3f}")
+        
+        for col, label in [('temperature', 'Temperature'), ('humidity', 'Humidity  '),
+                           ('wind_speed', 'Wind Speed'), ('pressure', 'Pressure  ')]:
+            if col in merged.columns:
+                print(f"   AQI vs {label}: {merged['aqi'].corr(merged[col]):.3f}")
         
         print("\n💡 INSIGHTS:")
-        wind_corr = merged['aqi'].corr(merged['wind_speed'])
-        humidity_corr = merged['aqi'].corr(merged['humidity'])
+        wind_corr = merged['aqi'].corr(merged['wind_speed']) if 'wind_speed' in merged.columns else 0
+        humidity_corr = merged['aqi'].corr(merged['humidity']) if 'humidity' in merged.columns else 0
         
         if wind_corr < -0.3:
             print("   🌬️  Higher wind speeds tend to reduce AQI (good!)")
@@ -221,10 +205,8 @@ class DataAnalyzer:
         print(f"🕐 Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("="*60)
         
-        # Load all data
         aqi_df, weather_df = self.load_all_data()
         
-        # Analyze
         self.analyze_aqi(aqi_df)
         self.analyze_weather(weather_df)
         self.analyze_correlations(aqi_df, weather_df)
