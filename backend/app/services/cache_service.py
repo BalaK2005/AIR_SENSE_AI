@@ -3,7 +3,7 @@ Cache Service
 Handles Redis caching operations for improved performance
 """
 
-import redis
+try:`n    import redis`nexcept ImportError:`n    redis = None
 import json
 import pickle
 from typing import Any, Optional
