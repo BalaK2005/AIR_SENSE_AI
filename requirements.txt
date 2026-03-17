@@ -14,3 +14,4 @@ python-dotenv==1.0.0
 
 # Visualization
 matplotlib==3.8.2
+redis==5.0.1
