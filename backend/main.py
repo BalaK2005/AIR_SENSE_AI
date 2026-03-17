@@ -5,6 +5,14 @@ from app.api.v1.endpoints import aqi, forecast, source, policy, auth
 from app.api.v1.endpoints.csv_aqi_router import router as csv_aqi_router
 from app.api.v1.endpoints import router as route_module
 
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"message": "Air Sense AI is running 🚀"}
+    
 app = FastAPI(
     title="AirVision API",
     description="Hyperlocal Air Quality Monitoring API",
