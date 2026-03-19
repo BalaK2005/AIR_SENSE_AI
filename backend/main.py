@@ -12,7 +12,7 @@ app = FastAPI()
 @app.get("/")
 def home():
     return {"message": "Air Sense AI is running 🚀"}
-    
+
 app = FastAPI(
     title="AirVision API",
     description="Hyperlocal Air Quality Monitoring API",

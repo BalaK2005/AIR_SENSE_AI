@@ -14,7 +14,7 @@ import os
 router = APIRouter()
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DATA_DIR = Path(r"C:\Users\Bala Muruganantham\Desktop\AIR_SENSE\data\raw")
+DATA_DIR = Path(__file__).parent.parent.parent.parent.parent / "data" / "raw"
 
 # Delhi diurnal AQI multipliers by hour (0–23)
 # Higher in morning/evening rush, lower midday and late night
@@ -324,3 +324,4 @@ async def get_forecast_summary():
         "data_points":    len(readings),
         "generated_at":   now.isoformat(),
     }
+
