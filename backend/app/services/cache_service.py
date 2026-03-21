@@ -7,7 +7,6 @@ try:
     import redis as redis_lib
     redis_client = redis_lib.Redis(host=getattr(settings,'REDIS_HOST','localhost'),port=getattr(settings,'REDIS_PORT',6379),db=getattr(settings,'REDIS_DB',0),password=getattr(settings,'REDIS_PASSWORD',None),decode_responses=False)
     redis_client.ping()
-    logger.info("Redis connected")
 except Exception as e:
     logger.warning(f"Redis unavailable: {e}")
     redis_client = None
@@ -19,9 +18,7 @@ def cache_get(key: str) -> Optional[Any]:
     except: return None
 def cache_set(key: str, value: Any, ttl: Optional[int] = None) -> bool:
     if not redis_client: return False
-    try:
-        redis_client.setex(key, ttl or 300, pickle.dumps(value))
-        return True
+    try: redis_client.setex(key, ttl or 300, pickle.dumps(value)); return True
     except: return False
 def cache_delete(key: str) -> bool:
     if not redis_client: return False
