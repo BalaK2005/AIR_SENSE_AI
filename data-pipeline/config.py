@@ -7,7 +7,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
+# Also try loading from current directory
+load_dotenv(override=False)
 
 # Project Paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -43,3 +45,5 @@ DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 print(f"✅ Config loaded for {CITY_NAME}")
 print(f"📂 Data directory: {DATA_DIR}")
+
+

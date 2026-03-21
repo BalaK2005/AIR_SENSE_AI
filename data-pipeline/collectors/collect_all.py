@@ -14,11 +14,11 @@ from config import AQICN_TOKEN, OPENWEATHER_KEY, RAW_DATA_DIR, TIMEOUT, DATETIME
 
 # ── NCR Cities config ────────────────────────────────────────────────────────
 NCR_CITIES = [
-    {"name": "Delhi",     "aqicn": "Delhi",               "lat": 28.6139, "lon": 77.2090},
-    {"name": "Noida",     "aqicn": "noida",               "lat": 28.5355, "lon": 77.3910},
-    {"name": "Gurgaon",   "aqicn": "gurgaon",             "lat": 28.4595, "lon": 77.0266},
-    {"name": "Ghaziabad", "aqicn": "ghaziabad",           "lat": 28.6692, "lon": 77.4538},
-    {"name": "Faridabad", "aqicn": "faridabad",           "lat": 28.4089, "lon": 77.3178},
+    {"name": "Delhi",     "aqicn": "@10111",               "lat": 28.6139, "lon": 77.2090},
+    {"name": "Noida",     "aqicn": "@7021",               "lat": 28.5355, "lon": 77.3910},
+    {"name": "Gurgaon",   "aqicn": "@8681",             "lat": 28.4595, "lon": 77.0266},
+    {"name": "Ghaziabad", "aqicn": "@8682",           "lat": 28.6692, "lon": 77.4538},
+    {"name": "Faridabad", "aqicn": "@9477",           "lat": 28.4089, "lon": 77.3178},
 ]
 
 AQICN_BASE  = "https://api.waqi.info/feed"

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 router = APIRouter()
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DATA_DIR    = Path(__file__).parent.parent.parent.parent.parent / "data" / "raw"
+DATA_DIR    = Path(r"C:\Users\Bala Muruganantham\Desktop\AIR_SENSE\data\raw")
 AQICN_TOKEN = os.getenv("AQICN_TOKEN", "your_token_here")
 OW_KEY      = os.getenv("OPENWEATHER_KEY", "your_key_here")
 PRIMARY_CITY = "Delhi"
@@ -230,4 +230,6 @@ def debug_path():
         "aqicn_token": AQICN_TOKEN[:8] + "...",
         "mode":        "CSV" if csv_available() else "AQICN API Direct",
     }
+
+
 
