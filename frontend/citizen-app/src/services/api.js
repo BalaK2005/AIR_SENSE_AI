@@ -42,11 +42,34 @@ const aqiAPI = {
 // ── Forecast: built client-side from history + live ─────────────────────────
 const forecastAPI = {
   generate: async (hours = 24) => {
-    const [liveRes, histRes] = await Promise.all([
-      api.get('/aqi/csv/live'),
-      api.get('/aqi/csv/history?days=3'),
-    ]);
-    return buildForecast(liveRes.data, histRes.data, hours);
+    try {
+      const res = await api.get(`/forecast/hourly?hours=${hours}`);
+      const d = res.data;
+      return {
+        current_aqi: d.base_aqi,
+        city: d.city || 'Delhi',
+        generated_at: d.generated_at,
+        forecast_hours: (d.forecast || []).map(f => ({
+          timestamp: f.timestamp,
+          hour: f.hour,
+          date: f.date,
+          aqi: f.aqi,
+          category: helpers.getAQICategory(f.aqi),
+          color: helpers.getAQIColor(f.aqi),
+          confidence: f.confidence * 100,
+        })),
+        summary: d.summary ? {
+          avg: d.summary.avg_aqi,
+          max: d.summary.max_aqi,
+          min: d.summary.min_aqi,
+          worst_hour: d.summary.worst_hour,
+          best_hour: d.summary.best_hour,
+        } : {},
+      };
+    } catch {
+      const liveRes = await api.get('/aqi/csv/live');
+      return buildForecast(liveRes.data, {}, hours);
+    }
   },
 };
 
