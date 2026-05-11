@@ -156,7 +156,7 @@ def collect_all_data():
 
     if aqi_results:
         print(f"\n  📈 NCR AQI Snapshot:")
-        for r in sorted(aqi_results, key=lambda x: x["aqi"] or 0, reverse=True):
+        for r in sorted(aqi_results, key=lambda x: float(x["aqi"]) if x["aqi"] and str(x["aqi"]).replace(".","",-1).lstrip("-").isdigit() else 0, reverse=True):
             bar = "█" * min(20, int((r["aqi"] or 0) / 20))
             print(f"     {r['city']:12s} {str(r['aqi']):>4s}  {bar}")
 
@@ -174,3 +174,6 @@ def collect_all_data():
 
 if __name__ == "__main__":
     collect_all_data()
+
+
+
