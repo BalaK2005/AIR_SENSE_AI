@@ -368,10 +368,4 @@ Note: Free tier instances spin down after 15 minutes of inactivity. The first re
 
 ---
 
-## License
-
-MIT License
-
----
-
 Built for Delhi-NCR air quality monitoring and policy analysis.
